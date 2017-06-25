@@ -1,1 +1,1 @@
-"# wiki-sentiment" 
+# wiki-sentiment
