@@ -1,6 +1,5 @@
 import os
 import sys
-
 import argparse
 import re
 import urllib
@@ -9,24 +8,30 @@ import json
 import datetime
 import calendar
 import hashlib
+import io
 import pdb
 
+# local resources
+import WikiExtractor
 import util
 
-from bs4 import BeautifulSoup
-
+# google's sentiment analysis api
 from google.cloud import language
 
+# target wikipedia pages
 page_ids = {
-    "CNN" : 62028,
-    "Fox News": 11121,
-    "Bill Cosby": 158894,
-    "Donald Trump": 4848272,
+    "CNN"             : 62028,
+    "Fox News"        : 11121,
+    "Bill Cosby"      : 158894,
+    "Donald Trump"    : 4848272,
+    "Hillary Clinton" : 5043192,
+    "George W Bush"   : 3414021,
 }
 
 class Result(object):
     pass
     
+# cacheable result class so we can easily pause, cancel, and resume processing
 class SentimentResult(Result, util.CachableMixin):
 
     def __init__(self, name, pageid, timestamp, length=0, score=None, magnitude=None):
@@ -64,7 +69,7 @@ def analyze(html_data):
     language_client = language.Client()
 
     # Instantiates a plain text document.
-    document = language_client.document_from_html(html_data)
+    document = language_client.document_from_text(html_data)
     
     # Detects sentiment in the document.
     annotations = document.annotate_text( include_sentiment = True,
@@ -86,8 +91,8 @@ def go(name, date, cache=False):
         '&prop=revisions' \
         '&list='          \
         '&pageids={}'     \
+        '&rvsection=0'    \
         '&rvprop=timestamp%7Ccontent' \
-        '&rvparse=1'      \
         '&rvstart={:04d}-{:02d}-{:02d}T00%3A00%3A00.000Z'
 
     # format the query
@@ -105,15 +110,24 @@ def go(name, date, cache=False):
     data  = json.loads(requests.get(query).text)
 
     # parse the result with BeautifulSoup
-    html  = data['query']['pages'][str(page_ids[name])]['revisions'][0]['*']
-    soup  = BeautifulSoup(html, "html5lib")
-    data  = soup.find_all('p')
+    wiki_markup  = data['query']['pages'][str(page_ids[name])]['revisions'][0]['*']
+    
+    def format(text):
+        lines = text.split('\n')
+        return ' '.join([i for i in lines if i][1:-1])
 
+    # extract readable text from the markup
+    extractor = WikiExtractor.Extractor(page_ids[name], 0, name, wiki_markup)
+    sio = io.StringIO()
+    extractor.extract(sio)
+    sio.seek(0)
+    text = format(sio.read())
+    
     # score the result with Google's sentiment analysis
-    score, magnitude = analyze(html)
+    score, magnitude = analyze(text)
     sentiment_result.score = score
     sentiment_result.magnitude = magnitude
-    sentiment_result.length = len(html)
+    sentiment_result.length = len(text)
     
     # cache to a file, if necessary
     if cache: sentiment_result.cache()
@@ -133,6 +147,11 @@ def main():
 
     # lol timedelta still cant do months - wtf?
     delta_day = lambda cur : cur + datetime.timedelta(days=1)
+    
+    # <joke>
+    # i had a problem once and decided to solve it with java
+    #   now i have a problem factory
+    # </joke>
     def add_months(months):
         def _add_months(cur):
             # https://stackoverflow.com/questions/4130922
@@ -143,10 +162,11 @@ def main():
             return datetime.date(year,month,day)
         return _add_months
     
-    for date in delta_gen(start, end, add_months(1)):
-        print("analyzing {}".format(date))
-        result = go(sys.argv[1], date, cache=True)
-        print(result)
+    for key in page_ids.keys():
+        for date in delta_gen(start, end, add_months(1)):
+            print("analyzing {}".format(date))
+            result = go(key, date, cache=True)
+            print(result)
 
     
 if __name__ == "__main__":
