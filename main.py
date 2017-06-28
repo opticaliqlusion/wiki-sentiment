@@ -15,6 +15,8 @@ import pdb
 import WikiExtractor
 import util
 
+from Result import SentimentResult
+
 # google's sentiment analysis api
 from google.cloud import language
 
@@ -27,42 +29,6 @@ page_ids = {
     "Hillary Clinton" : 5043192,
     "George W Bush"   : 3414021,
 }
-
-class Result(object):
-    pass
-    
-# cacheable result class so we can easily pause, cancel, and resume processing
-class SentimentResult(Result, util.CachableMixin):
-
-    def __init__(self, name, pageid, timestamp, length=0, score=None, magnitude=None):
-        self.name = name
-        self.score = score
-        self.pageid = pageid
-        self.timestamp = timestamp
-        self.magnitude = magnitude
-        self.length = length
-        return
-
-    def __str__(self):
-        return '<SentimentResult [{}:{}] Score:{} Magnitude:{} Length:{}>'.format(self.name, 
-            self.pageid, self.score, self.magnitude, self.length)
-        
-    def __copy__(self, other):
-        self.__dict__ = other.__dict__.copy()
-        
-    def __hash__(self):
-        
-        # dont use python's built-in hash() function;
-        # the hashes are different per-process, which
-        # totally defeats the purpose of the cache
-        
-        md5 = hashlib.md5()
-        md5.update(self.name.encode())
-        md5.update(str(self.pageid).encode())
-        md5.update(self.timestamp.encode())
-
-        return int(md5.hexdigest(), 16)
-
         
 def analyze(html_data):
     """Run a sentiment analysis request on text within a passed filename."""
@@ -102,7 +68,6 @@ def go(name, date, cache=False):
 
     # check to see if we actually need to perform the lookup
     if cache and sentiment_result.is_cached:
-        print("Found result in cache")
         sentiment_result.sync()
         return sentiment_result
     
@@ -161,13 +126,33 @@ def main():
             day = min(cur.day,calendar.monthrange(year,month)[1])
             return datetime.date(year,month,day)
         return _add_months
+
+    # gather the data, keeping it in a dictionary in case we want to render it
+    out = {}
     
     for key in page_ids.keys():
+        
+        x = []
+        y = []
+        z = []
+        
         for date in delta_gen(start, end, add_months(1)):
-            print("analyzing {}".format(date))
+            # caching straight to results allows for multithreading later
+            # because all of this query / analysis is IO bound
+            # ... but for now it doesnt take that long
             result = go(key, date, cache=True)
-            print(result)
+            
+            x += [result.timestamp] # x-axis, dates
+            y += [result.score]     # y-axis, the sentiment score
+            z += [result.magnitude] # z-axis, the magnitude of the score
+            
+        out[key] = [x,y,z]
+        
 
+    import make_graph
+    make_graph.make_graph(out)
     
+        
+
 if __name__ == "__main__":
     main()
