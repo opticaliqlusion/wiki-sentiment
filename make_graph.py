@@ -77,12 +77,12 @@ def make_graph(set_dict):
                         ax=0,
                         ay=-40),
                     dict(
-                        x='2012-01-01',
-                        y=0.6,
+                        x='2011-05-01',
+                        y=0.4,
                         xref='x',
                         yref='y',
-                        text='Applying Google Sentiment Analysis to evolving wikipedia pages.',
-                        showarrow=False,
+                        text='Google Sentiment Analysis of the summary paragraph of Donald Trump\'s Wikipedia page, May 2011.',
+                        showarrow=True,
                         arrowhead=0,
                         ax=0,
                         ay=-40)
